@@ -19,8 +19,15 @@ void setup() {
   radio.setChannel(108); // 2.508 GHz
   radio.stopListening();
 
+
   Serial.println("Server klaar... Typ bijv: LAMP1ON of LAMP2OFF");
 }
+
+bool isValidCommand(const String &cmd) {
+  return (cmd == "LAMP1ON" || cmd == "LAMP1OFF" ||
+          cmd == "LAMP2ON" || cmd == "LAMP2OFF");
+}
+
 
 void loop() {
   if (Serial.available()) {
@@ -36,9 +43,4 @@ void loop() {
       Serial.println("Ongeldig commando. Gebruik: LAMP1ON, LAMP1OFF, LAMP2ON of LAMP2OFF");
     }
   }
-}
-
-bool isValidCommand(const String &cmd) {
-  return (cmd == "LAMP1ON" || cmd == "LAMP1OFF" ||
-          cmd == "LAMP2ON" || cmd == "LAMP2OFF");
 }

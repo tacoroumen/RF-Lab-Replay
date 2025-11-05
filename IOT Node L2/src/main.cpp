@@ -23,7 +23,7 @@ void setup() {
   radio.setDataRate(RF24_250KBPS);
   radio.startListening();
 
-  Serial.println("Lamp node ready and listening...");
+  Serial.println("Lamp node2 ready and listening...");
 }
 
 void loop() {

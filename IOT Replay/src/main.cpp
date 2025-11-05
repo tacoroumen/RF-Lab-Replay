@@ -2,11 +2,15 @@
 #include <RF24.h>
 
 RF24 radio(4, 5); // CE, CSN
-const byte address[6] = "00001";
+
+// Addresses for RX and TX pipes
+const byte rxAddress[6] = "00001";
+const byte txAddress[6] = "00001";
 
 // ---- function prototypes ----
 void storeLog(const char *s);
 void printLog();
+void sendLogEntry(int index);
 
 // ---- log buffer settings ----
 struct LogEntry {
@@ -24,29 +28,34 @@ void setup() {
   radio.begin();
 
   if (!radio.isChipConnected()) {
-    Serial.println("NRF24 niet gevonden! Controleer bedrading en voeding.");
+    Serial.println("NRF24 not found! Check wiring and power.");
     while (true);
   }
 
-  radio.openReadingPipe(0, address);
+  // --- Common radio configuration ---
   radio.setPALevel(RF24_PA_MIN);
   radio.setDataRate(RF24_250KBPS);
   radio.setChannel(108);
+
+  // --- Open pipes ---
+  radio.openReadingPipe(0, rxAddress); // listen on RX address
+  //radio.setAutoAck(0, true);  // Disable ACKs only on reading pipe 0
+
+  radio.openWritingPipe(txAddress);    // send on TX address
+  
+
   radio.startListening();
 
   Serial.println("Receiver logger ready.");
-  Serial.println("Type 'LIST' in serial to show captured messages.");
+  Serial.println("Type 'LIST' to show messages or 'SEND <n>' to replay one.");
 }
 
 void loop() {
   // if a packet arrives, read and store
   if (radio.available()) {
-    // read up to 31 chars + null
     char buf[32];
     memset(buf, 0, sizeof(buf));
-    // RF24 read will fill the buffer; ensure we don't overflow and terminate
     radio.read(&buf, sizeof(buf));
-    // ensure null-terminated
     buf[sizeof(buf)-1] = '\0';
 
     storeLog(buf);
@@ -54,15 +63,24 @@ void loop() {
     Serial.println(buf);
   }
 
-  // check Serial commands (only LIST supported)
+  // check Serial commands (LIST or SEND n)
   if (Serial.available()) {
     String cmd = Serial.readStringUntil('\n');
     cmd.trim();
-    cmd.toUpperCase();
-    if (cmd == "LIST") {
+
+    if (cmd.equalsIgnoreCase("LIST")) {
       printLog();
+    } else if (cmd.startsWith("SEND")) {
+      cmd.remove(0, 4);
+      cmd.trim();
+      int idx = cmd.toInt();
+      if (idx >= 0 && idx < logCount) {
+        sendLogEntry(idx);
+      } else {
+        Serial.println("Invalid index. Use LIST to see available messages.");
+      }
     } else {
-      Serial.println("Unknown command. Type LIST to view log.");
+      Serial.println("Unknown command. Use LIST or SEND <n>.");
     }
   }
 }
@@ -90,14 +108,35 @@ void printLog() {
   Serial.println("---- Captured messages ----");
   for (int i = 0; i < logCount; ++i) {
     int idx = (logStart + i) % MAX_LOG;
-    unsigned long t = logBuf[idx].t;
     Serial.print(i);
     Serial.print(": ");
     Serial.print(logBuf[idx].msg);
     Serial.print("  (millis=");
-    Serial.print(t);
+    Serial.print(logBuf[idx].t);
     Serial.println(")");
   }
   if (logCount == 0) Serial.println("(no messages)");
   Serial.println("---------------------------");
+}
+
+void sendLogEntry(int index) {
+  int idx = (logStart + index) % MAX_LOG;
+  const char *msg = logBuf[idx].msg;
+
+  Serial.print("Replaying message #");
+  Serial.print(index);
+  Serial.print(": ");
+  Serial.println(msg);
+
+  // Switch to TX mode
+  radio.stopListening();
+  //radio.setAutoAck(false);   // <— disable ACK requirement
+  radio.openWritingPipe(txAddress);
+  radio.write(msg, strlen(msg) + 1);
+
+
+  // Return to RX mode
+  radio.openReadingPipe(0, rxAddress);
+  radio.startListening();
+
 }
